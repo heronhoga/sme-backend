@@ -17,6 +17,19 @@ func Test (ctx *fiber.Ctx) error {
 	})
 }
 
+func TestInvestor (ctx *fiber.Ctx) error {
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Inverstor ok",
+	})
+}
+
+func TestUkm (ctx *fiber.Ctx) error {
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Ukm ok",
+	})
+}
+
+
 func Register(ctx *fiber.Ctx) error {
     user := new(requests.Register)
 
