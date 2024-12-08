@@ -3,9 +3,9 @@ package main
 import (
 	"sme-backend/database"
 	"sme-backend/routes"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	// "sme-backend/models/entities"
 )
 
 func main() {
@@ -17,7 +17,8 @@ func main() {
 	// database initialization
 	database.DatabaseInit()
 
-	// migration
+	// migrations
+	// database.DB.AutoMigrate(&entities.User{})
 
 	app := fiber.New()
 

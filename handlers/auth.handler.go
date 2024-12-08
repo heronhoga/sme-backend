@@ -4,9 +4,10 @@ import (
 	"sme-backend/database"
 	"sme-backend/models/entities"
 	"sme-backend/models/requests"
-
+	"sme-backend/functions"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 func Test (ctx *fiber.Ctx) error {
@@ -15,55 +16,84 @@ func Test (ctx *fiber.Ctx) error {
 	})
 }
 
-func Register (ctx *fiber.Ctx) error {
-	user := new(requests.Register)
+func Register(ctx *fiber.Ctx) error {
+    user := new(requests.Register)
 
-	// Parse the request body
-	if err := ctx.BodyParser(user); err != nil {
-		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": err.Error(),
+    // Parse the request body
+    if err := ctx.BodyParser(user); err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": err.Error(),
+        })
+    }
+
+    // Validate the request
+    validate := validator.New()
+    if err := validate.Struct(user); err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "message": err.Error(),
+        })
+    }
+
+    // Check if username already exists
+	var exists bool
+	result := database.DB.Raw("SELECT EXISTS(SELECT 1 FROM users WHERE username = ? LIMIT 1)", user.Username).Scan(&exists)
+	
+	if result.Error != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": result.Error.Error(),
 		})
 	}
-
-	//validate the request
-	validate := validator.New()
-	if err := validate.Struct(user); err != nil {
-		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": err.Error(),
-		})
-	}
-
-	//check existing username
-	var existingUser entities.User
-	result := database.DB.Raw("SELECT 1 FROM users WHERE username = ? LIMIT 1", user.Username).Scan(&existingUser)
-
-	if result.RowsAffected > 0 {
+	
+	if exists {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "username already exists",
 		})
 	}
+	
 
-	//create user
-	newUser := entities.User{
-		FirstName: user.FirstName,
-		LastName: user.LastName,
-		Email: user.Email,
-		Phone: user.Phone,
-		Username: user.Username,
-		Password: user.Password,
-		Role: user.Role,
-	}
+    // Encrypt password
+    hashedPassword, err := functions.HashPassword(user.Password)
+    if err != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": err.Error(),
+        })
+    }
+    user.Password = hashedPassword
 
-	errCreateUser := database.DB.Create(&newUser).Error
+    // Generate UUID for new user
+    newUserUUID := uuid.New()
 
-	if errCreateUser != nil {
+    // Create user
+    newUser := entities.User{
+        IdUser:   newUserUUID,
+        FirstName: user.FirstName,
+        LastName: user.LastName,
+        Email: user.Email,
+        Phone: user.Phone,
+        Username: user.Username,
+        Password: user.Password,
+        Role: user.Role,
+    }
+
+    errCreateUser := database.DB.Create(&newUser).Error
+    if errCreateUser != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "message": errCreateUser.Error(),
+        })
+    }
+
+	// Generate JWT token
+	token, errGenerateToken := functions.GenerateToken(user.Username)
+
+	if errGenerateToken != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": errCreateUser.Error(),
+			"message": "Failed to generate token",
 		})
 	}
 
-	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "success",
-		"data": newUser,
-	})
+    return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+        "message": "success",
+        "data": newUser,
+		"token": token,
+    })
 }
