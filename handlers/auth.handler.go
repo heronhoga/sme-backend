@@ -2,9 +2,10 @@ package handlers
 
 import (
 	"sme-backend/database"
+	"sme-backend/functions"
 	"sme-backend/models/entities"
 	"sme-backend/models/requests"
-	"sme-backend/functions"
+	"golang.org/x/crypto/bcrypt"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -96,4 +97,71 @@ func Register(ctx *fiber.Ctx) error {
         "data": newUser,
 		"token": token,
     })
+}
+
+func Login(ctx *fiber.Ctx) error {
+	user := new(requests.Login)
+
+	// Parse the request body
+	if err := ctx.BodyParser(user); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": err.Error(),
+		})
+	}
+
+	// Validate the request
+	validate := validator.New()
+	if err := validate.Struct(user); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": err.Error(),
+		})
+	}
+
+	// Check if user exists
+	var exists bool
+	result := database.DB.Raw("SELECT EXISTS(SELECT 1 FROM users WHERE username = ? LIMIT 1)", user.Username).Scan(&exists)
+	
+	if result.Error != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": result.Error.Error(),
+		})
+	}
+	
+	if !exists {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "user not found",
+		})
+	}
+
+	// Check if password is correct - password is hashed
+	var hashedPassword string
+	result = database.DB.Raw("SELECT password FROM users WHERE username = ?", user.Username).Scan(&hashedPassword)
+	
+	if result.Error != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": result.Error.Error(),
+		})
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(user.Password)); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "invalid password",
+		})
+	}
+	
+
+	// Generate JWT token
+	token, errGenerateToken := functions.GenerateToken(user.Username)
+
+	if errGenerateToken != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to generate token",
+		})
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "success",
+		"token": token,
+	})
+
 }
