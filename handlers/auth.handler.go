@@ -5,10 +5,11 @@ import (
 	"sme-backend/functions"
 	"sme-backend/models/entities"
 	"sme-backend/models/requests"
-	"golang.org/x/crypto/bcrypt"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func Test (ctx *fiber.Ctx) error {
@@ -130,7 +131,6 @@ func Login(ctx *fiber.Ctx) error {
 		})
 	}
 
-	// Check if user exists
 	var exists bool
 	result := database.DB.Raw("SELECT EXISTS(SELECT 1 FROM users WHERE username = ? LIMIT 1)", user.Username).Scan(&exists)
 	
@@ -172,9 +172,25 @@ func Login(ctx *fiber.Ctx) error {
 		})
 	}
 
+	// Get user from database
+	var userData entities.User
+	result = database.DB.Raw("SELECT * FROM users WHERE username = ?", user.Username).Scan(&userData)
+	
+	if result.Error != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": result.Error.Error(),
+		})
+	}
+
+
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "success",
 		"token": token,
+		"data": 
+		fiber.Map{
+		"first_name": userData.FirstName, 
+		"last_name": userData.LastName, 
+		"username": userData.Username,
+		"role": userData.Role,},
 	})
-
 }
